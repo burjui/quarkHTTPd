@@ -24,6 +24,8 @@ struct RequestLine
 
 struct Header
 {
+    string name;
+    string value;
 }
 
 struct HTTPRequest
@@ -133,7 +135,7 @@ private:
         string request_line;
         char[1] buf;
 
-        bool received = false;
+        bool received;
 
         while (client.receive(buf))
         {
@@ -174,6 +176,82 @@ private:
 
         return RequestLine(method, std.uri.decodeComponent(parts[2]));
     }
+
+
+    /+string receiveLine()
+    {
+        char[1] 
+    }
+
+
+    string receiveHeaderLine()
+    {
+        string header_line;
+        char[1] buf;
+
+        bool received;
+
+        while (client.receive(buf))
+        {
+            if (buf[0] == '\n' && header_line.length > 0 && header_line[$ - 1] == '\r')
+            {
+                received = true;
+                header_line = header_line[0 .. $ - 1];
+                break;
+            }
+
+            header_line ~= buf[0];
+        }
+
+        if (!received)
+            throw new Exception("Could not receive header line");
+
+        return header_line;
+    }
+    
+
+    Header[] receiveRequestHeaders()
+    {
+        Header[] headers;
+
+        bool received;
+        char[2] crlf;
+
+        client.receive(crlf, SocketFlags.PEEK);
+
+        /*auto valid_format = RegExp(`([^ ]+):([^ ]+)`);
+
+        if (header_line != valid_format)
+            throw new Exception("Invalid header format: " ~ header_line)*/
+        
+        /*string header_line;
+        char[1] buf;
+
+        bool received = false;
+
+        while (client.receive(buf))
+        {
+            if (buf[0] == '\n' && header_line.length > 0 && header_line[$ - 1] == '\r')
+            {
+                received = true;
+                header_line = header_line[0 .. $ - 1];
+                break;
+            }
+
+            header_line ~= buf[0];
+        }
+
+        if (!received)
+            throw new Exception("Could not receive headers");
+
+        auto valid_format = RegExp(`([^ ]+):([^ ]+)`);
+
+        if (header_line != valid_format)
+            throw new Exception("Invalid header format: " ~ header_line);*/
+
+        return headers;
+    }
+    +/
     
     //----------
     
@@ -186,6 +264,8 @@ private:
             auto request_line = receiveRequestLine();
         catch (Throwable exception)
             sendErrorPage(HTTP_STATUS_NOT_IMPLEMENTED, "Cannot process the request");
+
+        //auto headers = receiveRequestHeaders();
 
         string request;
         char[1] buf;
@@ -236,9 +316,17 @@ public:
 
 TcpSocket server = null;
 
-extern (C) void catch_int(int sig_num)
+
+void stopServer()
 {
     server.shutdown(SocketShutdown.BOTH);
+    server.close();
+}
+
+
+extern (C) void catch_int(int sig_num)
+{
+    stopServer();
     exit(EXIT_FAILURE);
 }
 
@@ -255,7 +343,7 @@ void main()
     server.bind(new InternetAddress(80));
     server.listen(1);
 
-    scope (exit) server.shutdown(SocketShutdown.BOTH);
+    scope (exit) stopServer();
 
     while (true && !stdin.eof())
     {
