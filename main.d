@@ -52,6 +52,7 @@ struct ResponseStatus
 shared immutable ResponseStatus
     STATUS_OK = { 200, "OK" },
     STATUS_NOT_FOUND = { 404, "Not found" },
+    STATUS_INTERNAL_ERROR = { 500, "Internal Server Error" },
     STATUS_NOT_IMPLEMENTED = { 501, "Not implemented" };
 
 
@@ -121,8 +122,9 @@ private:
 
     void sendErrorPage(in ResponseStatus status, in string message)
     {
-        auto message_body = "<h2>" ~ message ~ "</h2><hr>" ~ BANNER;
+        auto message_body = format("<h2>%d %s</h2><hr>%s", status.code, message, BANNER);
         sendResponse(status, cast(void[])message_body);
+        writeln(message_body);
     }
 
 
@@ -275,20 +277,21 @@ private:
     {
         scope (exit) client.close();
 
-        /+try
+        try
+        {
             auto request_line = receiveRequestLine();
+            
+            if (request_line.method != RequestMethod.GET)
+            {
+                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Cannot process the request");
+                return;
+            }
+        }
         catch (Throwable exception)
-            sendErrorPage(HTTP_STATUS_NOT_IMPLEMENTED, "Cannot process the request");
-
-        //auto headers = receiveRequestHeaders();
-
-        string request;
-        char[1] buf;
-
-        while (client.receive(buf))
-            request ~= buf[0];
-
-        writeln(request);+/
+        {
+            sendErrorPage(STATUS_INTERNAL_ERROR, "Internal server error");
+            return;
+        }
 
         
         /*try
@@ -308,7 +311,7 @@ private:
         writeln("<< closing connection");*/
 
 
-        sendErrorPage(STATUS_NOT_FOUND, "<h2>All right</h2>");
+        //sendErrorPage(STATUS_NOT_FOUND, "<h2>All right</h2>");
         
 
         /*
