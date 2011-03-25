@@ -10,9 +10,9 @@ import std.uri;
 import std.c.stdlib;
 import core.thread;
 
-
 version (linux)
     import core.stdc.signal;
+
 
 static const string
    HTTP_VERSION_1_1 = "HTTP/1.1";
@@ -93,7 +93,6 @@ private:
     {
         auto message_body = format("<h2>%d %s</h2><hr>%s", status.code, message, BANNER);
         sendResponse(status, cast(void[])message_body);
-        writeln(message_body);
     }
 
 
@@ -126,6 +125,8 @@ private:
 
         auto method = methods.get(format_match.captures[1], RequestMethod.UNKNOWN);
         auto uri = std.uri.decodeComponent(format_match.captures[2]);
+
+        writeln("REQUEST ", line);
 
         return RequestLine(method, uri);
     }
@@ -199,13 +200,7 @@ private:
         return line;
     }
 
-
-    void processHeaders(in Header[] headers)
-    {
-        // TODO: all that stuff
-    }
-
-
+    
     void[] receiveMessageBody()
     {
         byte[] message_body;
@@ -222,13 +217,19 @@ private:
     }
 
 
-    //alias delegate bool (in RequestLine request, in Header[] headers) RequestProcessor;
+    alias bool delegate(in RequestLine request, in Header[] headers) RequestHandler;
 
 
-    void processRequest(in RequestLine request, in Header[] headers)
+    bool processRequest(in RequestLine request, in Header[] headers, in RequestHandler[] handlers)
     {
-        // TODO: subj
+        foreach (handle; handlers)
+        {
+            if (handle(request, headers))
+                return true;
+        }
 
+        return false;
+        
         /+
         auto message_body = receiveMessageBody();
         // TODO: do something with message_body
@@ -255,16 +256,22 @@ private:
             
             if (request_line.method != RequestMethod.GET)
             {
-                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Cannot process the request");
+                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Unknown request method");
                 return;
             }
 
             auto headers = receiveHeaders();
 
-            foreach (header; headers)
-                writefln("%s|%s", header.name, header.value);
-
-            processRequest(request_line, headers);
+            if (!processRequest(request_line, headers,
+                [
+                    &getOrdinaryFile,
+                    &getIndex,
+                    &getDirListing
+                ]))
+            {
+                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
+                return;
+            }
         }
         catch (Throwable exception)
         {
@@ -301,6 +308,106 @@ private:
         */
     }
 
+
+    //----- HANDLERS -----//
+
+    bool getOrdinaryFile(in RequestLine request, in Header[] headers)
+    {
+        return sendFile(std.path.join(root, request.uri.skip("/")));
+    }
+
+
+    bool getIndex(in RequestLine request, in Header[] headers)
+    {
+        auto path = uri2local(request.uri);
+
+        writeln("INDEX ", path);
+        
+        if (path.exists && path.isDir)
+            return sendFile(std.path.join(path, "index.html"));
+        
+        return false;
+    }
+
+
+    bool getDirListing(in RequestLine request, in Header[] headers)
+    {
+        auto path = uri2local(request.uri), host = getHeaderValue(headers, "Host");
+
+        writeln("LIST ", path);
+        
+        if (path.exists && path.isDir)
+        {
+            string page = "<html><body><pre>";
+
+            writeln("..OK");
+            
+            foreach (filename; path.listDir)
+            {
+                auto file_path = std.path.join(path, filename);
+                
+                page ~= format(`%s <a href="%s">%s</a><br/>`,
+                    ((file_path.exists && file_path.isDir) ? "DIR " : "    "),
+                    "http://" ~ host ~ "/" ~ request.uri ~ "/" ~ filename ~
+                        ((file_path.exists && file_path.isDir) ? "/" : ""),
+                    filename);
+            }
+
+            page ~= "</pre></body></html>";
+            sendResponse(STATUS_OK, page);
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    //--------------------//
+
+    
+    string getHeaderValue(in Header[] headers, string name)
+    {
+        foreach (header; headers)
+        {
+            if (header.name == name)
+                return header.value;
+        }
+        
+        return "";
+    }
+    
+
+    bool sendFile(string path)
+    {
+        writeln("SEND ", path);
+        
+        if (path.exists && path.isFile)
+        {
+            sendResponse(STATUS_OK, std.file.read(path), getMIMEType(path));
+            return true;
+        }
+
+        return false;
+    }
+
+    string uri2local(string uri)
+    {
+        return std.path.join(root, uri.skip("/"));
+    }
+
+    string getMIMEType(string filename)
+    {
+        const string[string] types =
+        [
+            "html": "text/html",
+            "txt":  "text/plain",
+            "gif":  "image/gif",
+            "jpg":  "image/jpeg"
+        ];
+
+        return types.get(getExt(filename), "application/octet-stream");
+    }
+
 public:
     this(string root, Socket client)
     {
@@ -308,6 +415,22 @@ public:
         this.root = root;
         super(&run);
     }
+}
+
+
+S1 skip(S1, S2)(S1 s, in S2 pattern)
+{
+    if (!s.empty && !pattern.empty)
+    {
+        size_t i = 0;
+
+        while (i < s.length && indexOf(pattern, s[i]) >= 0)
+            ++i;
+
+        return s[i .. $];
+    }
+
+    return s;
 }
 
 
@@ -340,7 +463,7 @@ void main()
 
     with (server)
     {
-        setOption(SocketOptionLevel.IP, SocketOption.REUSEADDR, 1);
+        setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, 1);
         bind(new InternetAddress(80));
         listen(1);
     }
@@ -351,13 +474,12 @@ void main()
     {
         auto client = server.accept();
         writeln(">> accepted a connection");
+        
         auto response_thread = new QuarkThread(root, client);
 
         try
             response_thread.start();
         catch (Throwable exception)
-        {
             writeln("Got an error: ", exception.toString());
-        }
     }
 }
