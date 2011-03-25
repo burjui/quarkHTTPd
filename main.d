@@ -388,13 +388,17 @@ void main()
 
     auto root = rel2abs(getcwd());
     server = new TcpSocket;
-    server.setOption(SocketOptionLevel.IP, SocketOption.REUSEADDR, 1);
-    server.bind(new InternetAddress(80));
-    server.listen(1);
+
+    with (server)
+    {
+        setOption(SocketOptionLevel.IP, SocketOption.REUSEADDR, 1);
+        bind(new InternetAddress(80));
+        listen(1);
+    }
 
     scope (exit) stopServer();
-
-    while (true && !stdin.eof())
+    
+    while (true)
     {
         auto client = server.accept();
         writeln(">> accepted a connection");
