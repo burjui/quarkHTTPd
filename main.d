@@ -1,3 +1,4 @@
+import std.array;
 import std.conv;
 import std.file;
 import std.path;
@@ -177,14 +178,47 @@ private:
         return RequestLine(method, std.uri.decodeComponent(parts[2]));
     }
 
-
-    /+string receiveLine()
+    
+    /* Receives a line from client, line ending is CRLF.
+     * Throws an exception if line ending was not received
+     */
+    string receiveLine()
     {
-        char[1] 
+        string line;
+        char[1] buffer, previous;
+        bool received_crlf;
+
+        /* Possible optimization (part 1)
+         * line.reserve(16);
+         */
+        
+        while (client.receive(buffer))
+        {
+            //writeln("> ", buffer);
+            if (previous == "\r" && buffer == "\n")
+            {
+                received_crlf = true;
+                --line.length;
+                break;
+            }
+
+            /* Possible optimization (part 2)
+             * if (line.length == line.capacity)
+             *   line.reserve(line.capacity * 2);
+             */
+
+            line ~= buffer;
+            previous = buffer;
+        }
+
+        if (!received_crlf)
+            throw new Exception("Did not receive line ending");
+
+        return line;
     }
 
 
-    string receiveHeaderLine()
+    /+string receiveHeaderLine()
     {
         string header_line;
         char[1] buf;
@@ -260,7 +294,7 @@ private:
     {
         scope (exit) client.close();
 
-        try
+        /+try
             auto request_line = receiveRequestLine();
         catch (Throwable exception)
             sendErrorPage(HTTP_STATUS_NOT_IMPLEMENTED, "Cannot process the request");
@@ -273,7 +307,21 @@ private:
         while (client.receive(buf))
             request ~= buf[0];
 
-        writeln(request);
+        writeln(request);+/
+
+        /*
+        try
+        {
+            for (string line = receiveLine(); !line.empty; line = receiveLine())
+                writeln(".. ", line);
+        }
+        catch (Throwable exception)
+        {
+            writeln("! ", exception.toString());
+        }
+
+        writeln("<< closing connection");
+        */
 
         /*
         string request = receiveRequest();
