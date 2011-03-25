@@ -388,6 +388,7 @@ void main()
 
     auto root = rel2abs(getcwd());
     server = new TcpSocket;
+    server.setOption(SocketOptionLevel.IP, SocketOption.REUSEADDR, 1);
     server.bind(new InternetAddress(80));
     server.listen(1);
 
