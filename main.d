@@ -2,7 +2,7 @@ import std.array;
 import std.conv;
 import std.file;
 import std.path;
-import std.regexp;
+import std.regex;
 import std.stdio;
 import std.string;
 import std.socket;
@@ -14,6 +14,8 @@ import core.thread;
 version (linux)
     import core.stdc.signal;
 
+static const string
+   HTTP_VERSION_1_1 = "HTTP/1.1";
 
 enum RequestMethod { OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, CONNECT, UNKNOWN }
 
@@ -31,10 +33,6 @@ struct Header
 
 struct HTTPRequest
 {
-   
-
-    static const string
-        VERSION_1_1 = "HTTP/1.1";
     
     RequestMethod   method;
     string   uri;
@@ -67,8 +65,7 @@ private:
     Socket client;
     string root;
 
-    /* Receives request from client
-     */
+    /*
     string receiveRequest()
     {
         string request;
@@ -86,8 +83,6 @@ private:
         return request;
     }
 
-    /* Parses HTTP GET request and returns the requested object name
-     */
     string parseGetRequest(in string request) const
     {
         string[] lines = splitlines(cast(string)request);
@@ -124,7 +119,7 @@ private:
     {
         auto message_body = "<h2>" ~ message ~ "</h2><hr>" ~ BANNER;
         sendResponse(status, message_body);
-    }
+    }*/
 
 
     //----------
@@ -133,32 +128,16 @@ private:
      */
     RequestLine receiveRequestLine()
     {
-        string request_line;
-        char[1] buf;
+        auto line = receiveLine();
+        auto format_match = std.regex.match(line, regex(`(\w+) ([^ ]+) ([^ ]+)`));
 
-        bool received;
+        if (line != format_match.hit())
+            throw new Exception("Invalid request line format: " ~ line);
 
-        while (client.receive(buf))
-        {
-            if (buf[0] == '\n' && request_line.length > 0 && request_line[$ - 1] == '\r')
-            {
-                received = true;
-                request_line = request_line[0 .. $ - 1];
-                break;
-            }
+        if (format_match.captures[3] != HTTP_VERSION_1_1)
+            throw new Exception("Invalid protocol version: " ~ format_match.captures[3]);
 
-            request_line ~= buf[0];
-        }
-
-        if (!received)
-            throw new Exception("Could not receive request line");
-
-        auto valid_format = RegExp(`(\w+) ([^ ]+) ([^ ]+)`);
-
-        if (request_line != valid_format)
-            throw new Exception("Invalid request line format: " ~ request_line);
-
-        enum RequestMethod[string] methods =
+        const RequestMethod[string] methods =
         [
             "OPTIONS": RequestMethod.OPTIONS,
             "GET": RequestMethod.GET,
@@ -170,12 +149,10 @@ private:
             "CONNECT": RequestMethod.CONNECT
         ];
 
-        auto parts = valid_format.search(request_line);
+        auto method = methods.get(format_match.captures[1], RequestMethod.UNKNOWN);
+        auto uri = std.uri.decodeComponent(format_match.captures[2]);
 
-        auto known_method = parts[1] in methods;
-        auto method = known_method ? *known_method : RequestMethod.UNKNOWN;
-
-        return RequestLine(method, std.uri.decodeComponent(parts[2]));
+        return RequestLine(method, uri);
     }
 
     
@@ -309,9 +286,13 @@ private:
 
         writeln(request);+/
 
-        /*
+        
         try
         {
+            auto request_line = receiveRequestLine();
+            with (request_line)
+                writefln("method: %s, uri: %s", method, uri);
+            
             for (string line = receiveLine(); !line.empty; line = receiveLine())
                 writeln(".. ", line);
         }
@@ -321,7 +302,7 @@ private:
         }
 
         writeln("<< closing connection");
-        */
+        
 
         /*
         string request = receiveRequest();
