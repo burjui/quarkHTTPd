@@ -42,17 +42,17 @@ struct HTTPRequest
 }
 
 
-struct HTTPStatus
+struct ResponseStatus
 {
-    int    code;
+    uint   code;
     string reason;
 }
 
 
-shared immutable HTTPStatus
-    HTTP_STATUS_OK = { 200, "OK" },
-    HTTP_STATUS_NOT_FOUND = { 404, "Not found" },
-    HTTP_STATUS_NOT_IMPLEMENTED = { 501, "Not implemented" };
+shared immutable ResponseStatus
+    STATUS_OK = { 200, "OK" },
+    STATUS_NOT_FOUND = { 404, "Not found" },
+    STATUS_NOT_IMPLEMENTED = { 501, "Not implemented" };
 
 
 class QuarkThread: Thread
@@ -95,17 +95,21 @@ private:
 
         return requested_object;
     }
+    */
 
-
-    void sendResponse(in HTTPStatus status, in void[] message_body = null, in string content_type = "text/html")
+    void sendResponse(in ResponseStatus status,
+                      lazy const void[] message_body = null,
+                      in string content_type = "text/html")
     {
-        string status_line = format(HTTPRequest.VERSION_1_1 ~ " %s %s" ~ CRLF,
+        string status_line = format(HTTP_VERSION_1_1 ~ " %s %s" ~ CRLF,
             to!string(status.code), std.uri.encode(status.reason));
 
         string headers;
 
         if (content_type && content_type != "")
             headers ~= "Content-Type: " ~ std.uri.encode(content_type) ~ CRLF;
+
+        headers ~= "Content-Length: " ~ to!string(message_body.length) ~ CRLF;
 
         string response = status_line ~ headers ~ CRLF;
         client.send(response);
@@ -115,11 +119,11 @@ private:
     }
 
 
-    void sendErrorPage(in HTTPStatus status, in string message)
+    void sendErrorPage(in ResponseStatus status, in string message)
     {
         auto message_body = "<h2>" ~ message ~ "</h2><hr>" ~ BANNER;
-        sendResponse(status, message_body);
-    }*/
+        sendResponse(status, cast(void[])message_body);
+    }
 
 
     //----------
@@ -287,7 +291,7 @@ private:
         writeln(request);+/
 
         
-        try
+        /*try
         {
             auto request_line = receiveRequestLine();
             with (request_line)
@@ -301,7 +305,10 @@ private:
             writeln("! ", exception.toString());
         }
 
-        writeln("<< closing connection");
+        writeln("<< closing connection");*/
+
+
+        sendErrorPage(STATUS_NOT_FOUND, "<h2>All right</h2>");
         
 
         /*
