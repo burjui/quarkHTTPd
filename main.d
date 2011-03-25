@@ -177,7 +177,6 @@ private:
         
         while (client.receive(buffer))
         {
-            //writeln("> ", buffer);
             if (previous == "\r" && buffer == "\n")
             {
                 received_crlf = true;
@@ -198,6 +197,47 @@ private:
             throw new Exception("Did not receive line ending");
 
         return line;
+    }
+
+
+    void processHeaders(in Header[] headers)
+    {
+        // TODO: all that stuff
+    }
+
+
+    void[] receiveMessageBody()
+    {
+        byte[] message_body;
+        byte[16] buffer;
+
+        for (auto received = client.receive(buffer); received; received = client.receive(buffer))
+        {
+            auto from = message_body.length - 1, to = from + received;
+            message_body.length += received;
+            message_body[from .. to] = buffer[0 .. received];
+        }
+
+        return message_body;
+    }
+
+
+    //alias delegate bool (in RequestLine request, in Header[] headers) RequestProcessor;
+
+
+    void processRequest(in RequestLine request, in Header[] headers)
+    {
+        // TODO: subj
+
+        /+
+        auto message_body = receiveMessageBody();
+        // TODO: do something with message_body
+
+        writeln("Message body length is ", message_body.length);
+        writeln("-------------------");
+        writeln(cast(string)message_body);
+        writeln("-------------------");
+        +/
     }
 
 
@@ -223,6 +263,8 @@ private:
 
             foreach (header; headers)
                 writefln("%s|%s", header.name, header.value);
+
+            processRequest(request_line, headers);
         }
         catch (Throwable exception)
         {
