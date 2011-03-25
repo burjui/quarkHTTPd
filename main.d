@@ -66,37 +66,6 @@ private:
     Socket client;
     string root;
 
-    /*
-    string receiveRequest()
-    {
-        string request;
-        char[1] buffer;
-        uint newlines = 0;
-        
-        while (client.receive(buffer))
-        {
-            request ~= buffer;
-            
-            if (request.length >= 4 && request[$ - 4 .. $] == (CRLF ~ CRLF))
-                break;
-        }
-
-        return request;
-    }
-
-    string parseGetRequest(in string request) const
-    {
-        string[] lines = splitlines(cast(string)request);
-        auto request_regexp = RegExp("GET +(.+) +.*\n");
-
-        string requested_object = "";
-
-        if ((lines[0] ~ '\n') == request_regexp)
-            requested_object = strip(request_regexp.replace("$1"));
-
-        return requested_object;
-    }
-    */
 
     void sendResponse(in ResponseStatus status,
                       lazy const void[] message_body = null,
@@ -160,6 +129,37 @@ private:
 
         return RequestLine(method, uri);
     }
+    
+
+    /* Receives and returns HTTP headers.
+     */
+    Header[] receiveHeaders()
+    {
+        Header[] headers;
+        
+        for (string line = receiveLine(); !line.empty; line = receiveLine())
+        {
+            if (iswhite(line[0]))
+            {
+                if (headers.empty)
+                    throw new Exception("Header starting from whitespace is invalid: `" ~ line ~ "'");
+
+                headers.back.value ~= strip(line);
+            }
+            else
+            {
+                auto format_match = match(line, regex(`([^ ]+):(.+)`));
+
+                if (line != format_match.hit())
+                    throw new Exception("Invalid header format: `" ~ line ~ "'");
+
+                with (format_match)
+                    headers ~= Header(captures[1], strip(captures[2]));
+            }
+        }
+
+        return headers;
+    }
 
     
     /* Receives a line from client, line ending is CRLF.
@@ -201,81 +201,13 @@ private:
     }
 
 
-    /+string receiveHeaderLine()
-    {
-        string header_line;
-        char[1] buf;
-
-        bool received;
-
-        while (client.receive(buf))
-        {
-            if (buf[0] == '\n' && header_line.length > 0 && header_line[$ - 1] == '\r')
-            {
-                received = true;
-                header_line = header_line[0 .. $ - 1];
-                break;
-            }
-
-            header_line ~= buf[0];
-        }
-
-        if (!received)
-            throw new Exception("Could not receive header line");
-
-        return header_line;
-    }
-    
-
-    Header[] receiveRequestHeaders()
-    {
-        Header[] headers;
-
-        bool received;
-        char[2] crlf;
-
-        client.receive(crlf, SocketFlags.PEEK);
-
-        /*auto valid_format = RegExp(`([^ ]+):([^ ]+)`);
-
-        if (header_line != valid_format)
-            throw new Exception("Invalid header format: " ~ header_line)*/
-        
-        /*string header_line;
-        char[1] buf;
-
-        bool received = false;
-
-        while (client.receive(buf))
-        {
-            if (buf[0] == '\n' && header_line.length > 0 && header_line[$ - 1] == '\r')
-            {
-                received = true;
-                header_line = header_line[0 .. $ - 1];
-                break;
-            }
-
-            header_line ~= buf[0];
-        }
-
-        if (!received)
-            throw new Exception("Could not receive headers");
-
-        auto valid_format = RegExp(`([^ ]+):([^ ]+)`);
-
-        if (header_line != valid_format)
-            throw new Exception("Invalid header format: " ~ header_line);*/
-
-        return headers;
-    }
-    +/
-    
-    //----------
-    
-
     void run()
     {
-        scope (exit) client.close();
+        scope (exit)
+        {
+            client.shutdown(SocketShutdown.BOTH);
+            client.close();
+        }
 
         try
         {
@@ -286,34 +218,18 @@ private:
                 sendErrorPage(STATUS_NOT_IMPLEMENTED, "Cannot process the request");
                 return;
             }
+
+            auto headers = receiveHeaders();
+
+            foreach (header; headers)
+                writefln("%s|%s", header.name, header.value);
         }
         catch (Throwable exception)
         {
             sendErrorPage(STATUS_INTERNAL_ERROR, "Internal server error");
             return;
         }
-
         
-        /*try
-        {
-            auto request_line = receiveRequestLine();
-            with (request_line)
-                writefln("method: %s, uri: %s", method, uri);
-            
-            for (string line = receiveLine(); !line.empty; line = receiveLine())
-                writeln(".. ", line);
-        }
-        catch (Throwable exception)
-        {
-            writeln("! ", exception.toString());
-        }
-
-        writeln("<< closing connection");*/
-
-
-        //sendErrorPage(STATUS_NOT_FOUND, "<h2>All right</h2>");
-        
-
         /*
         string request = receiveRequest();
         string object_name = parseGetRequest(request);
