@@ -4,7 +4,7 @@ COMPILER_FLAGS = -w -O -release
 .PHONY: all clean
 .SUFFIXES: .d .o
 
-OBJS = main.o
+OBJS = main.o quarkhttp/core.o quarkhttp/thread.o quarkhttp/utils.o
 EXECUTABLE = quarkd
 
 .d.o:
