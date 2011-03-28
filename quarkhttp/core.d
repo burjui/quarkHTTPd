@@ -27,7 +27,6 @@ struct ResponseStatus
 /+++++ Constants +++++/
 
 shared immutable string
-    CRLF = "\r\n",
     HTTP_VERSION_1_1 = "HTTP/1.1",
     BANNER = "quarkHTTPd 0.1 (C) 2009-2011 Artyom Borisovskiy";
 

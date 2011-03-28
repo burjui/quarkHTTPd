@@ -14,11 +14,23 @@ import quarkhttp.core;
 import quarkhttp.utils;
 
 
-class ResponseThread: Thread
+class Client
 {
 private:
-    Socket client;
-    string root;
+    Socket socket;
+
+public:
+    this(Socket client_socket)
+    {
+        socket = client_socket;
+    }
+    
+
+    void endSession()
+    {
+        socket.shutdown(SocketShutdown.BOTH);
+        socket.close();
+    }
     
 
     void sendResponse(in ResponseStatus status,
@@ -36,17 +48,10 @@ private:
         headers ~= "Content-Length: " ~ to!string(message_body.length) ~ CRLF;
 
         string response = status_line ~ headers ~ CRLF;
-        client.send(response);
+        socket.send(response);
 
         if (message_body)
-            client.send(message_body);
-    }
-
-
-    void sendErrorPage(in ResponseStatus status, in string message)
-    {
-        auto message_body = format("<h2>%d %s</h2><hr>%s", status.code, message, BANNER);
-        sendResponse(status, cast(void[])message_body);
+            socket.send(message_body);
     }
 
 
@@ -82,7 +87,7 @@ private:
 
         return RequestLine(method, uri);
     }
-    
+
 
     /* Receives and returns HTTP headers.
      */
@@ -114,7 +119,30 @@ private:
         return headers;
     }
 
+
+    void[] receiveMessageBody()
+    {
+        byte[] message_body;
+        byte[16] buffer;
+
+        for (auto received = socket.receive(buffer); received; received = socket.receive(buffer))
+        {
+            auto from = message_body.length - 1, to = from + received;
+            message_body.length += received;
+            message_body[from .. to] = buffer[0 .. received];
+        }
+
+        return message_body;
+    }
+
+
+    void sendErrorPage(in ResponseStatus status, in string message)
+    {
+        auto message_body = format("<h2>%d %s</h2><hr>%s", status.code, message, BANNER);
+        sendResponse(status, cast(void[])message_body);
+    }
     
+
     /* Receives a line from client, line ending is CRLF.
      * Throws an exception if line ending was not received
      */
@@ -128,7 +156,7 @@ private:
          * line.reserve(16);
          */
         
-        while (client.receive(buffer))
+        while (socket.receive(buffer))
         {
             if (previous == "\r" && buffer == "\n")
             {
@@ -151,27 +179,18 @@ private:
 
         return line;
     }
-
-    
-    void[] receiveMessageBody()
-    {
-        byte[] message_body;
-        byte[16] buffer;
-
-        for (auto received = client.receive(buffer); received; received = client.receive(buffer))
-        {
-            auto from = message_body.length - 1, to = from + received;
-            message_body.length += received;
-            message_body[from .. to] = buffer[0 .. received];
-        }
-
-        return message_body;
-    }
+}
 
 
+class ResponseThread: Thread
+{
+private:
     alias bool delegate(in RequestLine request, in Header[] headers) RequestHandler;
 
-
+    Client client;
+    string root;
+    
+    
     bool processRequest(in RequestLine request, in Header[] headers, in RequestHandler[] handlers)
     {
         foreach (handle; handlers)
@@ -187,37 +206,34 @@ private:
     void run()
     {
         scope (exit)
-        {
-            client.shutdown(SocketShutdown.BOTH);
-            client.close();
-        }
+            client.endSession();
 
         try
         {
-            auto request_line = receiveRequestLine();
+            auto request_line = client.receiveRequestLine();
             
             if (request_line.method != RequestMethod.GET)
             {
-                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Unknown request method");
+                client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Unknown request method");
                 return;
             }
 
-            auto headers = receiveHeaders();
+            auto headers = client.receiveHeaders();
 
             if (!processRequest(request_line, headers,
                 [
-                    &getOrdinaryFile,
-                    &getIndex,
-                    &getDirListing
+                    &fileSender,
+                    &indexSender,
+                    &dirLister
                 ]))
             {
-                sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
+                client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
                 return;
             }
         }
         catch (Throwable exception)
         {
-            sendErrorPage(STATUS_INTERNAL_ERROR, "Internal server error");
+            client.sendErrorPage(STATUS_INTERNAL_ERROR, "Internal server error");
             return;
         }
     }
@@ -226,57 +242,66 @@ private:
     //----- HANDLERS -----//
     
 
-    bool getOrdinaryFile(in RequestLine request, in Header[] headers)
+    bool fileSender(in RequestLine request, in Header[] headers)
     {
-        return sendFile(std.path.join(root, request.uri.skip("/")));
+        auto path = std.path.join(root, request.uri.skip("/"));
+        writeln("SEND? ", path);
+        
+        auto result = sendFile(path);
+        writefln(".. %s", result ? "OK" : "no");
+
+        return result;
     }
 
 
-    bool getIndex(in RequestLine request, in Header[] headers)
+    bool indexSender(in RequestLine request, in Header[] headers)
     {
         auto path = uri2local(request.uri);
-
-        writeln("INDEX ", path);
+        writeln("INDEX? ", path);
         
-        if (path.exists && path.isDir)
-            return sendFile(std.path.join(path, "index.html"));
+        auto result = path.exists && path.isDir && sendFile(std.path.join(path, "index.html"));
+        writefln(".. %s", result ? "OK" : "no");
         
         return false;
     }
 
 
-    bool getDirListing(in RequestLine request, in Header[] headers)
+    bool dirLister(in RequestLine request, in Header[] headers)
     {
         auto path = uri2local(request.uri), host = getHeaderValue(headers, "Host");
+        writeln("LIST? ", path);
 
-        writeln("LIST ", path);
+        bool result;
         
         if (path.exists && path.isDir)
         {
             string page = "<html><body><pre>";
-
-            writeln("..OK");
             
             foreach (filename; path.listDir)
             {
-                auto file_path = std.path.join(path, filename);
+                auto
+                    local_path = std.path.join(path, filename),
+                    local_path_is_dir = (local_path.exists && local_path.isDir),
+                    slash_if_dir = (local_path_is_dir ? "/" : ""),
+                    url = format(`http://%s/%s/%s%s`, host, request.uri, filename, slash_if_dir),
+                    prefix = (local_path_is_dir ? "DIR " : "    "),
+                    link = format(`%s <a href="%s">%s</a><br/>`, prefix, url, filename);
                 
-                page ~= format(`%s <a href="%s">%s</a><br/>`,
-                    ((file_path.exists && file_path.isDir) ? "DIR " : "    "),
-                    "http://" ~ host ~ "/" ~ request.uri ~ "/" ~ filename ~
-                        ((file_path.exists && file_path.isDir) ? "/" : ""),
-                    filename);
+                page ~= link;
             }
 
             page ~= "</pre></body></html>";
-            sendResponse(STATUS_OK, page);
+            client.sendResponse(STATUS_OK, page);
             
-            return true;
+            result = true;
         }
+
+        writefln(".. %s", result ? "OK" : "no");
         
-        return false;
+        return result;
     }
-    
+
+    //--------------------//
     
     string getHeaderValue(in Header[] headers, string name)
     {
@@ -292,21 +317,21 @@ private:
 
     bool sendFile(string path)
     {
-        writeln("SEND ", path);
-        
         if (path.exists && path.isFile)
         {
-            sendResponse(STATUS_OK, std.file.read(path), getMIMEType(path));
+            client.sendResponse(STATUS_OK, std.file.read(path), getMIMEType(path));
             return true;
         }
-
+        
         return false;
     }
+
 
     string uri2local(string uri)
     {
         return std.path.join(root, uri.skip("/"));
     }
+
 
     string getMIMEType(string filename)
     {
@@ -322,10 +347,15 @@ private:
     }
 
 public:
-    this(string root, Socket client)
+    this(string root, Socket client_socket)
     {
-        this.client = client;
-        this.root = root;
+        client = new Client(client_socket);
+        root = root;
         super(&run);
+    }
+
+    ~this()
+    {
+        delete client;
     }
 }

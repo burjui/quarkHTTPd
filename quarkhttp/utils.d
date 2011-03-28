@@ -4,6 +4,10 @@ import std.array;
 import std.string;
 
 
+shared immutable string
+    CRLF = "\r\n";
+
+
 S1 skip(S1, S2)(S1 s, in S2 pattern)
 {
     if (!s.empty && !pattern.empty)

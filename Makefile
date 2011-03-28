@@ -7,6 +7,8 @@ COMPILER_FLAGS = -w -O -release
 OBJS = main.o quarkhttp/core.o quarkhttp/response_thread.o quarkhttp/server.o quarkhttp/utils.o
 EXECUTABLE = quarkd
 
+all: $(EXECUTABLE)
+
 .d.o:
 	$(COMPILER) $(COMPILER_FLAGS) -c -of$@ $<
 
