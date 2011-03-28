@@ -1,4 +1,4 @@
-module quarkhttp.thread;
+module quarkhttp.response_thread;
 
 import core.thread;
 import std.array;
@@ -14,12 +14,12 @@ import quarkhttp.core;
 import quarkhttp.utils;
 
 
-class QuarkThread: Thread
+class ResponseThread: Thread
 {
 private:
     Socket client;
     string root;
-
+    
 
     void sendResponse(in ResponseStatus status,
                       lazy const void[] message_body = null,
