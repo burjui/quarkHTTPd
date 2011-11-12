@@ -182,7 +182,7 @@ public:
 }
 
 
-class ResponseThread: Thread
+class ResponseThread: core.thread.Thread
 {
 private:
     alias bool delegate(in RequestLine request, in Header[] headers) RequestHandler;
@@ -222,7 +222,7 @@ private:
 
             if (!processRequest(request_line, headers,
                 [
-                    &fileSender,
+                    //&fileSender,
                     &indexSender,
                     &dirLister
                 ]))
@@ -258,6 +258,7 @@ private:
     {
         auto path = uri2local(request.uri);
         writeln("INDEX? ", path);
+        writeln("? ", uri2local("xxx"));
         
         auto result = path.exists && path.isDir && sendFile(std.path.join(path, "index.html"));
         writefln(".. %s", result ? "OK" : "no");
@@ -350,7 +351,10 @@ public:
     this(string root, Socket client_socket)
     {
         client = new Client(client_socket);
-        root = root;
+        
+        this.root = root;
+        writeln("ROOT ", this.root);
+        
         super(&run);
     }
 

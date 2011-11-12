@@ -1,10 +1,10 @@
 COMPILER = dmd
-COMPILER_FLAGS = -w -O -release
+COMPILER_FLAGS = -w -wi -gc -gs# -unittest
 
 .PHONY: all clean
 .SUFFIXES: .d .o
 
-OBJS = main.o quarkhttp/core.o quarkhttp/response_thread.o quarkhttp/server.o quarkhttp/utils.o
+OBJS = main.o quarkhttp/config.o quarkhttp/core.o quarkhttp/response_thread.o quarkhttp/server.o quarkhttp/utils.o
 EXECUTABLE = quarkd
 
 all: $(EXECUTABLE)

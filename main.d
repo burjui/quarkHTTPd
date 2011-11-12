@@ -3,6 +3,7 @@ import std.file;
 import std.path;
 import std.socket;
 import std.stdio;
+import quarkhttp.config;
 import quarkhttp.server;
 
 version (linux)
