@@ -4,18 +4,20 @@ import std.file;
 import std.path;
 import std.socket;
 import std.stdio;
+import std.json;
 import quarkhttp.response_thread;
-
+import quarkhttp.config;
 
 class Server
 {
 private:
     TcpSocket socket;
-    
+    JSONValue[string] config;
 
 public:
-    this()
+    this(JSONValue[string] config)
     {
+        this.config = config;
         socket = new TcpSocket;
     }
 
@@ -38,7 +40,7 @@ public:
         with (socket)
         {
             setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, 1);
-            bind(new InternetAddress(80));
+            bind(new InternetAddress(cast(ushort)this.config["server"].object["listen"].integer));
             listen(1);
         }
 
@@ -49,7 +51,7 @@ public:
             auto client_socket = socket.accept();
             writeln(">> accepted a connection");
             
-            auto response_thread = new ResponseThread(rel2abs(root_path), client_socket);
+            auto response_thread = new ResponseThread(absolutePath(root_path), client_socket);
 
             try
                 response_thread.start();

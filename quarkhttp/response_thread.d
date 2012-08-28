@@ -97,7 +97,7 @@ public:
         
         for (string line = receiveLine(); !line.empty; line = receiveLine())
         {
-            if (iswhite(line[0]))
+            if (ascii.isWhite(line[0]))
             {
                 if (headers.empty)
                     throw new Exception("Header starting from whitespace is invalid: `" ~ line ~ "'");
@@ -212,23 +212,22 @@ private:
         {
             auto request_line = client.receiveRequestLine();
             
-            if (request_line.method != RequestMethod.GET)
+            switch (request_line.method)
             {
-                client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Unknown request method");
-                return;
-            }
-
-            auto headers = client.receiveHeaders();
-
-            if (!processRequest(request_line, headers,
-                [
-                    //&fileSender,
-                    &indexSender,
-                    &dirLister
-                ]))
-            {
-                client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
-                return;
+                case RequestMethod.GET:
+                case RequestMethod.POST:
+                case RequestMethod.PUT:
+                case RequestMethod.DELETE:
+                    auto headers = client.receiveHeaders();
+                    if (!processRequest(request_line, headers, [&indexSender, &dirLister]))
+                    {
+                        client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
+                        return;
+                    }
+                    break;
+                default:
+                    client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Unknown request method");
+                    return;
             }
         }
         catch (Throwable exception)
@@ -244,7 +243,7 @@ private:
 
     bool fileSender(in RequestLine request, in Header[] headers)
     {
-        auto path = std.path.join(root, request.uri.skip("/"));
+        auto path = std.path.buildPath(root, request.uri.skip("/"));
         writeln("SEND? ", path);
         
         auto result = sendFile(path);
@@ -260,7 +259,7 @@ private:
         writeln("INDEX? ", path);
         writeln("? ", uri2local("xxx"));
         
-        auto result = path.exists && path.isDir && sendFile(std.path.join(path, "index.html"));
+        auto result = path.exists && path.isDir && sendFile(std.path.buildPath(path, "index.html"));
         writefln(".. %s", result ? "OK" : "no");
         
         return false;
@@ -278,10 +277,10 @@ private:
         {
             string page = "<html><body><pre>";
             
-            foreach (filename; path.listDir)
+            foreach (filename; path.dirEntries(path, SpanMode.depth))
             {
                 auto
-                    local_path = std.path.join(path, filename),
+                    local_path = std.path.buildPath(path, filename),
                     local_path_is_dir = (local_path.exists && local_path.isDir),
                     slash_if_dir = (local_path_is_dir ? "/" : ""),
                     url = format(`http://%s/%s/%s%s`, host, request.uri, filename, slash_if_dir),
@@ -330,7 +329,7 @@ private:
 
     string uri2local(string uri)
     {
-        return std.path.join(root, uri.skip("/"));
+        return std.path.buildPath(root, uri.skip("/"));
     }
 
 
@@ -344,7 +343,7 @@ private:
             "jpg":  "image/jpeg"
         ];
 
-        return types.get(getExt(filename), "application/octet-stream");
+        return types.get(extension(filename), "application/octet-stream");
     }
 
 public:

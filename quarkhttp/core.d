@@ -32,6 +32,8 @@ shared immutable string
 
 shared immutable ResponseStatus
     STATUS_OK = { 200, "OK" },
+    STATUS_FORBIDDEN = { 403, "Forbidden" },
     STATUS_NOT_FOUND = { 404, "Not found" },
+    STATUS_METHOD_NOT_ALLOWED = { 405, "Method not allowed" },
     STATUS_INTERNAL_ERROR = { 500, "Internal Server Error" },
     STATUS_NOT_IMPLEMENTED = { 501, "Not implemented" };
