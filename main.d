@@ -15,9 +15,12 @@ Server server = null;
 Config config = null;
 
 
-extern (C) void catch_int(int sig_num)
+extern (C) nothrow void catch_int(int sig_num)
 {
-    server.stop();
+    try 
+        server.stop();
+    catch {}
+
     exit(EXIT_FAILURE);
 }
 

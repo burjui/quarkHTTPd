@@ -37,12 +37,13 @@ public:
                       lazy const void[] message_body = null,
                       in string content_type = "text/html")
     {
-        string status_line = format(HTTP_VERSION_1_1 ~ " %s %s" ~ CRLF,
-            to!string(status.code), std.uri.encode(status.reason));
+        auto code = to!string(status.code),
+             reason = std.uri.encode(status.reason),
+             status_line = HTTP_VERSION_1_1 ~ " " ~ code ~ " " ~ reason ~ CRLF;
 
         string headers;
 
-        if (content_type && content_type != "")
+        if (content_type != "")
             headers ~= "Content-Type: " ~ std.uri.encode(content_type) ~ CRLF;
 
         headers ~= "Content-Length: " ~ to!string(message_body.length) ~ CRLF;
@@ -219,7 +220,7 @@ private:
                 case RequestMethod.PUT:
                 case RequestMethod.DELETE:
                     auto headers = client.receiveHeaders();
-                    if (!processRequest(request_line, headers, [&indexSender, &dirLister]))
+                    if (!processRequest(request_line, headers, [&indexSender, &dirLister, &fileSender]))
                     {
                         client.sendErrorPage(STATUS_NOT_IMPLEMENTED, "Not implemented");
                         return;
@@ -256,8 +257,7 @@ private:
     bool indexSender(in RequestLine request, in Header[] headers)
     {
         auto path = uri2local(request.uri);
-        writeln("INDEX? ", path);
-        writeln("? ", uri2local("xxx"));
+        writefln("INDEX? %s -> %s ", request.uri, path);
         
         auto result = path.exists && path.isDir && sendFile(std.path.buildPath(path, "index.html"));
         writefln(".. %s", result ? "OK" : "no");
@@ -337,10 +337,10 @@ private:
     {
         const string[string] types =
         [
-            "html": "text/html",
-            "txt":  "text/plain",
-            "gif":  "image/gif",
-            "jpg":  "image/jpeg"
+            ".html": "text/html",
+            ".txt":  "text/plain",
+            ".gif":  "image/gif",
+            ".jpg":  "image/jpeg"
         ];
 
         return types.get(extension(filename), "application/octet-stream");
