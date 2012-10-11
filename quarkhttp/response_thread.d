@@ -34,13 +34,9 @@ public:
     
 
     void sendResponse(in ResponseStatus status,
-                      lazy const void[] message_body = null,
+                      const void[] message_body = null,
                       in string content_type = "text/html")
     {
-        auto code = to!string(status.code),
-             reason = std.uri.encode(status.reason),
-             status_line = HTTP_VERSION_1_1 ~ " " ~ code ~ " " ~ reason ~ CRLF;
-
         string headers;
 
         if (content_type != "")
@@ -48,13 +44,21 @@ public:
 
         headers ~= "Content-Length: " ~ to!string(message_body.length) ~ CRLF;
 
-        string response = status_line ~ headers ~ CRLF;
-        socket.send(response);
+        sendStatus(status);
+        socket.send(headers ~ CRLF);
 
         if (message_body)
             socket.send(message_body);
     }
 
+    void sendStatus(in ResponseStatus status)
+    {
+        auto code = to!string(status.code),
+             reason = std.uri.encode(status.reason),
+             status_line = HTTP_VERSION_1_1 ~ " " ~ code ~ " " ~ reason ~ CRLF;
+
+        socket.send(status_line);
+    }
 
     /* Receives, parses and returns HTTP request line with decoded URI.
      */
@@ -277,8 +281,11 @@ private:
         {
             string page = "<html><body><pre>";
             
-            foreach (filename; path.dirEntries(path, SpanMode.depth))
+            foreach (entry; path.dirEntries(SpanMode.shallow))
             {
+                auto filename = entry.name.baseName;
+                writeln("  ", filename);
+
                 auto
                     local_path = std.path.buildPath(path, filename),
                     local_path_is_dir = (local_path.exists && local_path.isDir),
